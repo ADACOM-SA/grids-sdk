@@ -1,0 +1,29 @@
+!.mvn/wrapper/maven-wrapper.jar
+
+target/
+logs.path_IS_UNDEFINED/
+logs/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+nbproject/private/
+build/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+.vscode/settings.json
+nb-configuration.xml
