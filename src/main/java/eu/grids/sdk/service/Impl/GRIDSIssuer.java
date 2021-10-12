@@ -1,18 +1,27 @@
 package eu.grids.sdk.service.Impl;
 
 
+import com.nimbusds.common.contenttype.ContentType;
+import com.nimbusds.jose.JOSEException;
+import com.nimbusds.jose.crypto.RSADecrypter;
+import com.nimbusds.jwt.EncryptedJWT;
+import com.nimbusds.jwt.JWT;
 import com.nimbusds.oauth2.sdk.*;
 import com.nimbusds.oauth2.sdk.auth.ClientSecretBasic;
 import com.nimbusds.oauth2.sdk.auth.Secret;
 import com.nimbusds.oauth2.sdk.http.HTTPResponse;
 import com.nimbusds.oauth2.sdk.id.ClientID;
 import com.nimbusds.oauth2.sdk.id.State;
+import com.nimbusds.oauth2.sdk.pkce.CodeChallenge;
+import com.nimbusds.oauth2.sdk.pkce.CodeChallengeMethod;
 import com.nimbusds.oauth2.sdk.token.BearerAccessToken;
 import com.nimbusds.openid.connect.sdk.*;
 import com.nimbusds.openid.connect.sdk.claims.UserInfo;
 import com.nimbusds.openid.connect.sdk.op.OIDCProviderMetadata;
 import com.nimbusds.openid.connect.sdk.token.OIDCTokens;
 import eu.grids.sdk.service.IGRIDSIssuer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,42 +29,52 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.security.KeyPair;
+import java.util.List;
+import java.util.Map;
 
 
 public class GRIDSIssuer implements IGRIDSIssuer {
+
+    Logger logger = LoggerFactory.getLogger(GRIDSIssuer.class);
 
     private URI issuerURI;
     private String clientId;
     private String clientSecret;
     private URI callbackURI;
     private OIDCProviderMetadata providerMetadata;
+    private KeyPair jwksKeyPair;
 
+    public GRIDSIssuer(URI issuerURI) {
+        this.issuerURI = issuerURI;
+    }
 
-    public GRIDSIssuer(URI issuerURI, String clientId, String clientSecret, URI callbackURI) {
+    public GRIDSIssuer(URI issuerURI, String clientId, String clientSecret, URI callbackURI,KeyPair jwksKeyPair) {
         this.issuerURI = issuerURI;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.callbackURI = callbackURI;
+        this.jwksKeyPair = jwksKeyPair;
     }
-
 
     public OIDCProviderMetadata getOPMetadata() {
 
 
         URL providerConfigurationURL = null;
         try {
-            providerConfigurationURL = issuerURI.resolve("/.well-known/openid-configuration").toURL();
+            String baseUrl = issuerURI.toString();
+            providerConfigurationURL = new URL(new URL(baseUrl), ".well-known/openid-configuration");
         } catch (MalformedURLException e) {
-            e.printStackTrace();
-            // TODO proper error handling
+            logger.error("Wrong issuerURI url format", e);
+            return null;
         }
 
         InputStream stream = null;
         try {
             stream = providerConfigurationURL.openStream();
         } catch (IOException e) {
-            e.printStackTrace();
-            // TODO proper error handling
+            logger.error("Could not retrieve Issuer metadata.", e);
+            return null;
         }
         // Read all data from URL
         String providerInfo = null;
@@ -63,12 +82,11 @@ public class GRIDSIssuer implements IGRIDSIssuer {
             providerInfo = s.useDelimiter("\\A").hasNext() ? s.next() : "";
         }
 
-        OIDCProviderMetadata providerMetadata = null;
         try {
             providerMetadata = OIDCProviderMetadata.parse(providerInfo);
         } catch (ParseException e) {
-            e.printStackTrace();
-            // TODO proper error handling
+            logger.error("Could not parse Issuer metadata.", e);
+            return null;
         }
 
         return providerMetadata;
@@ -89,10 +107,7 @@ public class GRIDSIssuer implements IGRIDSIssuer {
 
 
         // Compose the request
-        AuthenticationRequest authenticationRequest = new AuthenticationRequest(
-                providerMetadata.getAuthorizationEndpointURI(),
-                new ResponseType(ResponseType.Value.CODE),
-                scope, new ClientID(clientId), callbackURI, state, nonce);
+        AuthenticationRequest authenticationRequest = new AuthenticationRequest(providerMetadata.getAuthorizationEndpointURI(), new ResponseType(ResponseType.Value.CODE), (ResponseMode) null, scope, new ClientID(clientId), callbackURI, state, nonce, (Display) null, (Prompt) null, -1, (List) null, (List) null, (JWT) null, (String) null, (List) null, claims, (String) null, (JWT) null, (URI) null, (CodeChallenge) null, (CodeChallengeMethod) null, (List) null, false, (Map) null);
 
         URI authReqURI = authenticationRequest.toURI();
 
@@ -117,7 +132,8 @@ public class GRIDSIssuer implements IGRIDSIssuer {
         try {
             tokenHTTPResp = tokenReq.toHTTPRequest().send();
         } catch (SerializeException | IOException e) {
-            // TODO proper error handling
+            logger.error("Could not retrieve token", e);
+            return null;
         }
 
         // Parse and check response
@@ -126,12 +142,14 @@ public class GRIDSIssuer implements IGRIDSIssuer {
         try {
             tokenResponse = OIDCTokenResponseParser.parse(tokenHTTPResp);
         } catch (ParseException e) {
-            // TODO proper error handling
+            logger.error("Could not parse token", e);
+            return null;
         }
 
         if (tokenResponse instanceof TokenErrorResponse) {
             ErrorObject error = ((TokenErrorResponse) tokenResponse).getErrorObject();
-            // TODO error handling
+            logger.error("Token error: " + error.getDescription());
+            return null;
         }
 
         OIDCTokenResponse accessTokenResponse = (OIDCTokenResponse) tokenResponse;
@@ -153,7 +171,8 @@ public class GRIDSIssuer implements IGRIDSIssuer {
         try {
             userInfoHTTPResp = userInfoReq.toHTTPRequest().send();
         } catch (SerializeException | IOException e) {
-            // TODO proper error handling
+            logger.error("Could not retrieve userInfo", e);
+            return null;
         }
 
         UserInfoResponse userInfoResponse = null;
@@ -161,16 +180,30 @@ public class GRIDSIssuer implements IGRIDSIssuer {
         try {
             userInfoResponse = UserInfoResponse.parse(userInfoHTTPResp);
         } catch (ParseException e) {
-            // TODO proper error handling
+            logger.error("Could not parse userInfo", e);
+            return null;
         }
 
         if (userInfoResponse instanceof UserInfoErrorResponse) {
             ErrorObject error = ((UserInfoErrorResponse) userInfoResponse).getErrorObject();
-            // TODO error handling
+            logger.error("UserInfo error: " + error.getDescription());
+            return null;
         }
 
         UserInfoSuccessResponse successResponse = (UserInfoSuccessResponse) userInfoResponse;
-        return successResponse.getUserInfo();
+
+        if (successResponse.getEntityContentType().matches(ContentType.APPLICATION_JSON)) {
+            return successResponse.getUserInfo();
+        } else {
+            try {
+                return new UserInfo(successResponse.getUserInfoJWT().getJWTClaimsSet());
+            } catch (java.text.ParseException e) {
+                logger.error("UserInfo JWT parse error.", e);
+
+                e.printStackTrace();
+                return null;
+            }
+        }
 
     }
 
@@ -187,31 +220,64 @@ public class GRIDSIssuer implements IGRIDSIssuer {
         try {
             userInfoHTTPResp = userInfoReq.toHTTPRequest().send();
         } catch (SerializeException | IOException e) {
-            // TODO proper error handling
+            logger.error("Could not retrieve DP userInfo", e);
+            return null;
         }
 
         UserInfoResponse userInfoResponse = null;
 
         try {
-            userInfoResponse = UserInfoResponse.parse(userInfoHTTPResp);
+            if (userInfoHTTPResp.getEntityContentType().equals(ContentType.APPLICATION_JWT)){
+
+                JWT jwt = userInfoHTTPResp.getContentAsJWT();
+
+                if (jwt instanceof EncryptedJWT) {
+                    EncryptedJWT enryptedJwt = (EncryptedJWT) userInfoHTTPResp.getContentAsJWT();
+                    enryptedJwt.decrypt(new RSADecrypter(jwksKeyPair.getPrivate()));
+                    userInfoResponse = new UserInfoSuccessResponse(enryptedJwt);
+
+                }else{
+                    userInfoResponse = UserInfoResponse.parse(userInfoHTTPResp);
+                }
+
+            }else{
+                userInfoResponse = UserInfoResponse.parse(userInfoHTTPResp);
+            }
+
+
         } catch (ParseException e) {
-            // TODO proper error handling
+            logger.error("Could not parse DP userInfo", e);
+            return null;
+        } catch (JOSEException e) {
+            logger.error("Could not decrypt DP userInfo", e);
+
+            e.printStackTrace();
+            return null;
         }
 
         if (userInfoResponse instanceof UserInfoErrorResponse) {
             ErrorObject error = ((UserInfoErrorResponse) userInfoResponse).getErrorObject();
-            // TODO error handling
+            logger.error("DP UserInfo error: " + error.getDescription());
+            return null;
         }
 
         UserInfoSuccessResponse successResponse = (UserInfoSuccessResponse) userInfoResponse;
-        return successResponse.getUserInfo();
 
+        if (successResponse.getEntityContentType().matches(ContentType.APPLICATION_JSON)) {
+            return successResponse.getUserInfo();
+        } else {
+            try {
+                return new UserInfo(successResponse.getUserInfoJWT().getJWTClaimsSet());
+            } catch (java.text.ParseException e) {
+                logger.error("DP UserInfo JWT parse error.", e);
+                return null;
+            }
+        }
 
     }
 
-
     private AuthorizationCode extractFromURL(String callbackUrl) {
-        
+
         AuthenticationResponse authResp = null;
         try {
             authResp = AuthenticationResponseParser.parse(new URI(callbackUrl));
@@ -223,6 +289,7 @@ public class GRIDSIssuer implements IGRIDSIssuer {
             ErrorObject error = ((AuthenticationErrorResponse) authResp)
                     .getErrorObject();
             // TODO error handling
+            return null;
         }
 
         AuthenticationSuccessResponse successResponse = (AuthenticationSuccessResponse) authResp;
@@ -240,7 +307,6 @@ public class GRIDSIssuer implements IGRIDSIssuer {
         return authCode;
     }
 
-
     public URI getIssuerURI() {
         return issuerURI;
     }
@@ -257,4 +323,11 @@ public class GRIDSIssuer implements IGRIDSIssuer {
         return callbackURI;
     }
 
+    public KeyPair getJwksKeyPair() {
+        return jwksKeyPair;
+    }
+
+    public void setJwksKeyPair(KeyPair jwksKeyPair) {
+        this.jwksKeyPair = jwksKeyPair;
+    }
 }

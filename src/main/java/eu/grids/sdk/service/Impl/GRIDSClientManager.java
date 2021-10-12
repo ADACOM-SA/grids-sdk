@@ -5,7 +5,10 @@ import com.nimbusds.oauth2.sdk.ParseException;
 import com.nimbusds.oauth2.sdk.client.*;
 import com.nimbusds.oauth2.sdk.http.HTTPResponse;
 import com.nimbusds.oauth2.sdk.token.BearerAccessToken;
+import com.nimbusds.openid.connect.sdk.rp.OIDCClientMetadata;
 import eu.grids.sdk.service.IGRIDSClientManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
@@ -13,13 +16,15 @@ import java.util.Collections;
 
 public class GRIDSClientManager implements IGRIDSClientManager {
 
+    Logger logger = LoggerFactory.getLogger(GRIDSClientManager.class);
+
     private final URI clientsEndpoint;
 
     public GRIDSClientManager(URI clientsEndpoint) {
         this.clientsEndpoint = clientsEndpoint;
     }
 
-    public ClientInformation registerClient(ClientMetadata clientMetadata, String masterToken) throws IOException, ParseException {
+    public ClientInformation registerClient(OIDCClientMetadata clientMetadata, String masterToken) throws IOException, ParseException {
 
         BearerAccessToken token = new BearerAccessToken(masterToken);
 
@@ -36,9 +41,8 @@ public class GRIDSClientManager implements IGRIDSClientManager {
         ClientRegistrationResponse regResponse = ClientRegistrationResponse.parse(httpResponse);
 
         if (!regResponse.indicatesSuccess()) {
-            //TODO: Handle error
             ClientRegistrationErrorResponse errorResponse = (ClientRegistrationErrorResponse) regResponse;
-            System.err.println(errorResponse.getErrorObject());
+            logger.error("Client registration error: " + errorResponse.getErrorObject().getDescription());
             return null;
         }
 
@@ -62,9 +66,8 @@ public class GRIDSClientManager implements IGRIDSClientManager {
         ClientRegistrationResponse regResponse = ClientRegistrationResponse.parse(httpResponse);
 
         if (!regResponse.indicatesSuccess()) {
-            //TODO: Handle error
             ClientRegistrationErrorResponse errorResponse = (ClientRegistrationErrorResponse) regResponse;
-            System.err.println(errorResponse.getErrorObject());
+            logger.error("Get client information error: " + errorResponse.getErrorObject().getDescription());
             return null;
         }
 
@@ -89,9 +92,8 @@ public class GRIDSClientManager implements IGRIDSClientManager {
         ClientRegistrationResponse regResponse = ClientRegistrationResponse.parse(httpResponse);
 
         if (! regResponse.indicatesSuccess()) {
-            //TODO: Handle error
             ClientRegistrationErrorResponse errorResponse = (ClientRegistrationErrorResponse)regResponse;
-            System.err.println(errorResponse.getErrorObject());
+            logger.error("Update client information error: " + errorResponse.getErrorObject().getDescription());
             return null;
         }
 
@@ -112,8 +114,7 @@ public class GRIDSClientManager implements IGRIDSClientManager {
         HTTPResponse httpResponse = deleteRequest.toHTTPRequest().send();
 
         if (! httpResponse.indicatesSuccess()) {
-            //TODO: Handle error
-            System.err.println(ClientRegistrationErrorResponse.parse(httpResponse).getErrorObject());
+            logger.error("Delete client error: " + httpResponse.getContentAsJSONObject());
             return false;
         }
 
