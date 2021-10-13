@@ -11,14 +11,14 @@
   <p align="center">
     increasinG tRust with eId for Developing buSiness
     <br />
-    <a href="/"><strong>Explore the docs »</strong></a>
+    <a href="#usage"><strong>Explore the docs »</strong></a>
     <br />
     <br />
-    <a href="">View Demo</a>
+    <a href="#">View Demo</a>
     ·
-    <a href="/issues">Report Bug</a>
+    <a href="/../../issues">Report Bug</a>
     ·
-    <a href="/issues">Request Feature</a>
+    <a href="/../../issues">Request Feature</a>
   </p>
 </div>
 
