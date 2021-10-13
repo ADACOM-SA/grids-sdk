@@ -227,7 +227,7 @@ public class GRIDSIssuer implements IGRIDSIssuer {
         UserInfoResponse userInfoResponse = null;
 
         try {
-            if (userInfoHTTPResp.getEntityContentType().equals(ContentType.APPLICATION_JWT)){
+            if (userInfoHTTPResp.getEntityContentType().matches(ContentType.APPLICATION_JWT)){
 
                 JWT jwt = userInfoHTTPResp.getContentAsJWT();
 
